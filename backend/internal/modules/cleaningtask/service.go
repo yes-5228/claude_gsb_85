@@ -24,15 +24,26 @@ type SegmentGateway interface {
 	BriefsByIDs(ctx context.Context, ids []uint) (map[uint]pipesegment.Brief, error)
 }
 
+// OverdueGateway 超期预警对外提供的能力（由 overdue.Service 实现）。
+//
+// 任务列表与看板通过它复用同一套超期口径；任务模块只面向接口，
+// 不依赖预警模块的具体实现，保持模块依赖单向。
+type OverdueGateway interface {
+	Sync(ctx context.Context) error
+	BriefsByTaskIDs(ctx context.Context, taskIDs []uint) (map[uint]OverdueBrief, error)
+	Stages() []option.Option
+}
+
 // Service 清淤任务业务逻辑。
 type Service struct {
 	repo     *Repository
 	segments SegmentGateway
+	overdue  OverdueGateway
 }
 
-// NewService 构造服务。
-func NewService(repo *Repository, segments SegmentGateway) *Service {
-	return &Service{repo: repo, segments: segments}
+// NewService 构造服务。overdue 可以为 nil（不附带超期信息）。
+func NewService(repo *Repository, segments SegmentGateway, overdue OverdueGateway) *Service {
+	return &Service{repo: repo, segments: segments, overdue: overdue}
 }
 
 // Create 登记清淤任务，任务编号按 日期 + 流水号 自动生成。
@@ -118,8 +129,22 @@ func (s *Service) FindByID(ctx context.Context, id uint) (*CleaningTask, error) 
 	return task, nil
 }
 
-// List 分页查询任务，并批量补齐管段信息与清淤汇总。
+// List 分页查询任务，并批量补齐管段信息、清淤汇总与超期预警。
 func (s *Service) List(ctx context.Context, query ListQuery) ([]ListItem, int64, error) {
+	if query.OverdueStage != "" {
+		if s.overdue == nil {
+			return nil, 0, httpx.Validation("超期预警能力未启用，无法按超期阶段筛选")
+		}
+		if !option.Has(s.overdue.Stages(), query.OverdueStage) {
+			return nil, 0, httpx.Validation(fmt.Sprintf("超期阶段只能是：%s", option.Labels(s.overdue.Stages())))
+		}
+	}
+	// 先同步预警再查询，保证任务列表与预警列表、看板的超期口径一致。
+	if s.overdue != nil {
+		if err := s.overdue.Sync(ctx); err != nil {
+			return nil, 0, err
+		}
+	}
 	tasks, total, err := s.repo.List(ctx, query)
 	if err != nil {
 		return nil, 0, httpx.WrapInternal("查询清淤任务失败", err)
@@ -143,6 +168,13 @@ func (s *Service) List(ctx context.Context, query ListQuery) ([]ListItem, int64,
 	if err != nil {
 		return nil, 0, httpx.WrapInternal("统计清淤量失败", err)
 	}
+	var overdueBriefs map[uint]OverdueBrief
+	if s.overdue != nil {
+		overdueBriefs, err = s.overdue.BriefsByTaskIDs(ctx, taskIDs)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
 
 	items := make([]ListItem, 0, len(tasks))
 	for i := range tasks {
@@ -150,6 +182,9 @@ func (s *Service) List(ctx context.Context, query ListQuery) ([]ListItem, int64,
 		item := ListItem{CleaningTask: task, RecordTotals: totals[task.ID]}
 		if brief, ok := briefs[task.PipeSegmentID]; ok {
 			item.Segment = &brief
+		}
+		if warning, ok := overdueBriefs[task.ID]; ok {
+			item.OverdueWarning = &warning
 		}
 		items = append(items, item)
 	}

@@ -9,11 +9,12 @@
 
 | 模块 | 页面 | 说明 |
 | --- | --- | --- |
-| 运行看板 | `/` | 跨模块汇总管段、任务、清淤量、验收合格率，含待验收任务与分片区统计 |
+| 运行看板 | `/` | 跨模块汇总管段、任务、清淤量、验收合格率，含待验收任务、分阶段超期预警与分片区统计 |
 | 管段台账 | `/segments`、`/segments/new`、`/segments/:id`、`/segments/:id/edit` | 管段档案维护、任务概况、清淤履历（计划 → 记录 → 验收） |
-| 清淤任务 | `/tasks`、`/tasks/new`、`/tasks/:id`、`/tasks/:id/edit` | 任务登记、开工 / 完工报验 / 取消、任务下清淤记录与验收结论 |
+| 清淤任务 | `/tasks`、`/tasks/new`、`/tasks/:id`、`/tasks/:id/edit` | 任务登记、开工 / 完工报验 / 取消、任务下清淤记录与验收结论、超期预警标记 |
 | 清淤记录 | `/records`、`/records/new`、`/records/:id`、`/records/:id/edit` | 按次录入现场数据（长度、清淤量、用水量、人数、设备、安全措施等） |
 | 验收记录 | `/acceptances`、`/acceptances/new`、`/acceptances/:id` | 登记验收结论、整改跟踪、复验 |
+| 超期预警 | `/warnings` | 分阶段超期预警列表（未按期开工 / 未按期报验 / 验收超期）与阈值规则配置 |
 | 枚举字典 | `/api/v1/meta/enums` | 后端统一下发全部枚举中文标签，前端不硬编码文案 |
 
 ## 技术栈
@@ -38,6 +39,7 @@
 │   │   │   ├── cleaningtask/        # 清淤任务（含状态机）
 │   │   │   ├── cleaningrecord/      # 清淤记录
 │   │   │   ├── acceptance/          # 验收记录
+│   │   │   ├── overdue/             # 超期预警（分阶段判定、阈值规则、预警记录）
 │   │   │   ├── dashboard/           # 运行看板（只读汇总）
 │   │   │   └── meta/                # 枚举字典
 │   │   ├── router/                  # 路由装配
@@ -49,7 +51,7 @@
 │   │   ├── api/                     # 接口封装（统一拆信封、抛 ApiError）
 │   │   ├── components/              # 通用组件（布局、表格、分页、弹窗、标签、Toast 等）
 │   │   ├── features/                # 按业务模块拆分的页面
-│   │   │   ├── dashboard/  segments/  tasks/  records/  acceptances/
+│   │   │   ├── dashboard/  segments/  tasks/  records/  acceptances/  warnings/
 │   │   ├── hooks/                   # useAsync / useForm
 │   │   ├── providers/               # 枚举字典 Provider
 │   │   ├── styles/                  # 全局样式
@@ -141,12 +143,15 @@ npm run dev            # http://localhost:5173
 | GET | `/api/v1/pipe-segments/:id` | 管段详情（含任务统计与最近任务） |
 | GET | `/api/v1/pipe-segments/:id/cleaning-history` | 管段清淤履历 |
 | POST/PUT/DELETE | `/api/v1/pipe-segments[/:id]` | 新增 / 修改 / 删除管段 |
-| GET | `/api/v1/cleaning-tasks` | 任务列表（`keyword` `status` `district` `priority` `source` `pipeSegmentId` `planFrom` `planTo`） |
+| GET | `/api/v1/cleaning-tasks` | 任务列表（`keyword` `status` `district` `priority` `source` `pipeSegmentId` `overdue` `overdueStage` `planFrom` `planTo`） |
 | GET | `/api/v1/cleaning-tasks/:id` | 任务详情（含清淤汇总、验收结论、可执行动作） |
 | POST/PUT/DELETE | `/api/v1/cleaning-tasks[/:id]` | 登记 / 修改 / 删除任务 |
 | POST | `/api/v1/cleaning-tasks/:id/start` | 开工（待开工 → 清淤中） |
 | POST | `/api/v1/cleaning-tasks/:id/complete` | 完工报验（清淤中 → 待验收，需至少 1 条清淤记录） |
 | POST | `/api/v1/cleaning-tasks/:id/cancel` | 取消任务（需填写取消原因） |
+| GET | `/api/v1/overdue-warnings` | 超期预警列表（`stage` `level` `status` `keyword` `page` `pageSize`，默认只看待处理） |
+| GET | `/api/v1/overdue-warnings/summary` | 待处理预警分阶段 / 分级别统计 |
+| GET/POST | `/api/v1/overdue-rules` | 预警规则列表 / 新增规则（阶段、阈值、级别、生效日期） |
 | GET | `/api/v1/cleaning-records` | 记录列表（`keyword` `taskId` `segmentId` `method` `weather` `dateFrom` `dateTo`） |
 | GET | `/api/v1/cleaning-records/:id` | 记录详情（含所属任务与管段） |
 | POST/PUT/DELETE | `/api/v1/cleaning-records[/:id]` | 录入 / 修改 / 删除清淤记录 |
@@ -180,6 +185,32 @@ pending ──开工──▶ in_progress ──完工报验──▶ completed 
 - 删除保护：被任务引用的管段、已产生清淤记录或验收记录的任务、被验收记录引用的清淤记录、
   以及已合格的验收记录，都不允许删除。
 
+## 超期预警
+
+超期判断从单一截止日期扩展为三个阶段，分别对应不同提示级别（默认规则，可配置）：
+
+| 阶段 | 触发条件 | 默认阈值 | 默认级别 |
+| --- | --- | --- | --- |
+| 未按期开工 `start` | 计划开始日期已过，任务仍停留在「待开工」 | 超过 3 天 | 提醒 |
+| 未按期报验 `finish` | 计划完成日期已过，任务仍未完工报验 | 超过 0 天（次日即触发） | 警告 |
+| 验收超期 `accept` | 完工报验之后长期没有验收结论 | 超过 7 天 | 严重 |
+
+判定与统计口径：
+
+- 一条任务在任意时刻最多落入一个阶段：待开工任务若开工、报验阈值同时越过，
+  按更靠后的「未按期报验」提示；任务状态推进或取消后，对应预警自动解除并保留解除原因。
+- 同一任务同一阶段只生成一次预警（`task_id + stage` 唯一约束），不会被反复提醒。
+- 已取消、已验收的任务不参与超期统计。
+- 预警列表、任务列表（`overdue` / `overdueStage` 过滤）与看板超期数量全部来自
+  预警模块的同一套判定结果，口径一致。
+
+阈值规则（`overdue_rules`）：
+
+- 每个阶段的阈值与级别可配置，规则带**生效日期**，判定取「生效日期不晚于判定日」的最新一条；
+  同一阶段同一生效日期只允许一条规则。
+- 预警生成时固化当时的阈值与级别快照，之后调整规则只影响新生成的预警，不回溯历史记录。
+- 首次启动自动写入默认规则（上表），规则表非空时不会覆盖已有配置。
+
 ## 校验与错误码
 
 字段校验基于 `validator`，错误文案通过结构体 `label` 标签直接输出中文，例如「验证评分不能大于 100」。
@@ -203,7 +234,7 @@ pending ──开工──▶ in_progress ──完工报验──▶ completed 
 cd backend
 go build ./...
 go vet ./...
-go test ./...          # httpx 与四个业务模块的单测（内存 SQLite）
+go test ./...          # httpx 与五个业务模块的单测（内存 SQLite）
 gofmt -l .             # 应无输出
 ```
 

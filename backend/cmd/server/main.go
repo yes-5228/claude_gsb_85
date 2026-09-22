@@ -18,6 +18,7 @@ import (
 	"github.com/drainage/desilting/internal/database"
 	"github.com/drainage/desilting/internal/httpx"
 	"github.com/drainage/desilting/internal/middleware"
+	"github.com/drainage/desilting/internal/modules/overdue"
 	"github.com/drainage/desilting/internal/router"
 )
 
@@ -40,6 +41,9 @@ func run() error {
 	}
 	if err := database.Migrate(db); err != nil {
 		return fmt.Errorf("数据库迁移失败: %w", err)
+	}
+	if err := overdue.EnsureDefaultRules(context.Background(), db); err != nil {
+		return fmt.Errorf("初始化超期预警规则失败: %w", err)
 	}
 	if cfg.SeedEnabled {
 		if err := database.Seed(db, logger); err != nil {

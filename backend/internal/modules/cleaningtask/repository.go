@@ -151,6 +151,17 @@ func (r *Repository) filtered(ctx context.Context, query ListQuery) *gorm.DB {
 	if query.PipeSegmentID > 0 {
 		tx = tx.Where("pipe_segment_id = ?", query.PipeSegmentID)
 	}
+	if query.OverdueStage != "" {
+		subQuery := r.db.WithContext(ctx).Table(refx.TableOverdueWarnings).
+			Select("task_id").
+			Where("status = ? AND stage = ?", "active", query.OverdueStage)
+		tx = tx.Where("id IN (?)", subQuery)
+	} else if query.Overdue {
+		subQuery := r.db.WithContext(ctx).Table(refx.TableOverdueWarnings).
+			Select("task_id").
+			Where("status = ?", "active")
+		tx = tx.Where("id IN (?)", subQuery)
+	}
 	if query.District != "" {
 		subQuery := r.db.WithContext(ctx).Table(refx.TablePipeSegments).
 			Select("id").

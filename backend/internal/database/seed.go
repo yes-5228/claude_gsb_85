@@ -153,12 +153,12 @@ func Seed(db *gorm.DB, logger *slog.Logger) error {
 				StartedAt: stamp(today.AddDays(-18), 8),
 			},
 			{
-				Code:  "QX" + today.AddDays(3).Format("20060102") + "-0001",
+				Code:  "QX" + today.AddDays(-5).Format("20060102") + "-0001",
 				Title: "长江南路雨水管汛前清淤", PipeSegmentID: segmentID["PS-Y-2022-033"],
 				Priority: cleaningtask.PriorityNormal, Source: cleaningtask.SourcePlan, Method: cleaningtask.MethodHighPressure,
-				PlanStartDate: today.AddDays(3), PlanEndDate: today.AddDays(8),
+				PlanStartDate: today.AddDays(-5), PlanEndDate: today.AddDays(2),
 				TeamName: "城南养护三班", LeaderName: "陈刚", LeaderPhone: "0571-88345678",
-				Status: cleaningtask.StatusPending, Description: "按年度计划安排，待城东片区任务完成后进场",
+				Status: cleaningtask.StatusPending, Description: "按年度计划安排，班组调度滞后尚未进场",
 			},
 			{
 				Code:  "QX" + today.AddDays(-10).Format("20060102") + "-0001",

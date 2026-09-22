@@ -16,6 +16,7 @@ import { SegmentListPage } from './features/segments/SegmentListPage';
 import { TaskDetailPage } from './features/tasks/TaskDetailPage';
 import { TaskFormPage } from './features/tasks/TaskFormPage';
 import { TaskListPage } from './features/tasks/TaskListPage';
+import { WarningListPage } from './features/warnings/WarningListPage';
 import { MetaProvider } from './providers/MetaProvider';
 
 export function App() {
@@ -39,6 +40,9 @@ export function App() {
               <Route path="tasks/new" element={<TaskFormPage />} />
               <Route path="tasks/:id" element={<TaskDetailPage />} />
               <Route path="tasks/:id/edit" element={<TaskFormPage />} />
+
+              {/* 超期预警 */}
+              <Route path="warnings" element={<WarningListPage />} />
 
               {/* 清淤记录 */}
               <Route path="records" element={<RecordListPage />} />

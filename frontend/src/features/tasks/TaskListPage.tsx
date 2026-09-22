@@ -28,6 +28,7 @@ export function TaskListPage() {
   const district = params.get('district') ?? '';
   const priority = params.get('priority') ?? '';
   const source = params.get('source') ?? '';
+  const overdue = params.get('overdue') ?? '';
   const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
 
   const [keywordInput, setKeywordInput] = useState(keyword);
@@ -35,9 +36,12 @@ export function TaskListPage() {
     setKeywordInput(keyword);
   }, [keyword]);
 
+  // 超期筛选：all 全部 / yes 全部超期 / 具体阶段值（start、finish、accept）。
+  const overdueQuery =
+    overdue === 'yes' ? { overdue: true } : overdue ? { overdueStage: overdue } : {};
   const list = useAsync(
-    () => taskApi.list({ keyword, status, district, priority, source, page, pageSize: PAGE_SIZE }),
-    [keyword, status, district, priority, source, page]
+    () => taskApi.list({ keyword, status, district, priority, source, ...overdueQuery, page, pageSize: PAGE_SIZE }),
+    [keyword, status, district, priority, source, overdue, page]
   );
 
   const [pendingDelete, setPendingDelete] = useState<TaskListItem | null>(null);
@@ -107,6 +111,20 @@ export function TaskListPage() {
       )
     },
     { key: 'status', title: '状态', width: '100px', render: (row) => <StatusTag list="taskStatuses" value={row.status} /> },
+    {
+      key: 'overdue',
+      title: '超期预警',
+      width: '120px',
+      render: (row) =>
+        row.overdueWarning ? (
+          <>
+            <StatusTag list="overdueStages" value={row.overdueWarning.stage} />
+            <span className="cell-sub">超期 {formatNumber(row.overdueWarning.overdueDays, 0)} 天</span>
+          </>
+        ) : (
+          <span className="tag tag-muted">正常</span>
+        )
+    },
     {
       key: 'priority',
       title: '优先级',
@@ -223,6 +241,18 @@ export function TaskListPage() {
               <select className="select" value={source} onChange={(event) => applyFilter({ source: event.target.value })}>
                 <option value="">全部来源</option>
                 {(enums?.taskSources ?? []).map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-item">
+              <span className="filter-label">超期预警</span>
+              <select className="select" value={overdue} onChange={(event) => applyFilter({ overdue: event.target.value })}>
+                <option value="">全部任务</option>
+                <option value="yes">全部超期</option>
+                {(enums?.overdueStages ?? []).map((item) => (
                   <option key={item.value} value={item.value}>
                     {item.label}
                   </option>

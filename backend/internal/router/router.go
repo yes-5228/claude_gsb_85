@@ -14,6 +14,7 @@ import (
 	"github.com/drainage/desilting/internal/modules/cleaningtask"
 	"github.com/drainage/desilting/internal/modules/dashboard"
 	"github.com/drainage/desilting/internal/modules/meta"
+	"github.com/drainage/desilting/internal/modules/overdue"
 	"github.com/drainage/desilting/internal/modules/pipesegment"
 )
 
@@ -23,7 +24,8 @@ var startedAt = time.Now()
 // Setup 注册健康检查与全部业务模块路由。
 //
 // 模块之间的依赖在这里显式装配：清淤记录依赖清淤任务，验收依赖任务、
-// 清淤记录与管段台账，看板只读依赖全部模块。
+// 清淤记录与管段台账；超期预警读任务状态，任务列表与看板反过来通过
+// 网关接口复用预警模块的统一口径；看板只读依赖全部模块。
 func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	app.Get("/healthz", func(c *fiber.Ctx) error {
 		return httpx.OK(c, fiber.Map{
@@ -38,8 +40,9 @@ func Setup(app *fiber.App, db *gorm.DB, cfg *config.Config) {
 	meta.Register(api)
 
 	segmentService := pipesegment.Register(api, db)
-	taskService := cleaningtask.Register(api, db, segmentService)
+	overdueService := overdue.Register(api, db)
+	taskService := cleaningtask.Register(api, db, segmentService, overdueService)
 	recordService := cleaningrecord.Register(api, db, taskService)
 	acceptance.Register(api, db, taskService, segmentService, recordService)
-	dashboard.Register(api, db)
+	dashboard.Register(api, db, overdueService)
 }

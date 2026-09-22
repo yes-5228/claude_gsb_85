@@ -39,6 +39,8 @@ type ListQuery struct {
 	Priority      string
 	Source        string
 	PipeSegmentID uint
+	Overdue       bool
+	OverdueStage  string
 	PlanFrom      *date.Date
 	PlanTo        *date.Date
 	Page          httpx.PageQuery
@@ -53,6 +55,8 @@ func ParseListQuery(c *fiber.Ctx) (ListQuery, error) {
 		Priority:      httpx.TrimmedQuery(c, "priority"),
 		Source:        httpx.TrimmedQuery(c, "source"),
 		PipeSegmentID: uint(c.QueryInt("pipeSegmentId", 0)),
+		Overdue:       httpx.TrimmedQuery(c, "overdue") == "true",
+		OverdueStage:  httpx.TrimmedQuery(c, "overdueStage"),
 		Page:          httpx.ParsePage(c),
 	}
 	from, err := parseDateParam(c, "planFrom", "计划开始日期起")
@@ -80,11 +84,19 @@ func parseDateParam(c *fiber.Ctx, key, label string) (*date.Date, error) {
 	return &parsed, nil
 }
 
-// ListItem 任务列表项：任务本体 + 管段信息 + 清淤汇总。
+// OverdueBrief 任务上的超期预警摘要，由超期预警模块统一计算。
+type OverdueBrief struct {
+	Stage       string `json:"stage"`
+	Level       string `json:"level"`
+	OverdueDays int    `json:"overdueDays"`
+}
+
+// ListItem 任务列表项：任务本体 + 管段信息 + 清淤汇总 + 超期预警。
 type ListItem struct {
 	CleaningTask
-	Segment      *pipesegment.Brief `json:"segment"`
-	RecordTotals refx.RecordTotals  `json:"recordTotals"`
+	Segment        *pipesegment.Brief `json:"segment"`
+	RecordTotals   refx.RecordTotals  `json:"recordTotals"`
+	OverdueWarning *OverdueBrief      `json:"overdueWarning"`
 }
 
 // DetailResponse 任务详情：任务 + 管段 + 清淤汇总 + 验收结论 + 可执行操作。

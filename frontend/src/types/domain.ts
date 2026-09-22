@@ -9,6 +9,13 @@ export type CleaningMethod = 'high_pressure' | 'winch' | 'grab' | 'manual' | 'ro
 export type Weather = 'sunny' | 'cloudy' | 'overcast' | 'light_rain' | 'heavy_rain';
 export type AcceptanceResult = 'pass' | 'rework';
 
+/** 超期预警阶段：未按期开工 / 未按期报验 / 验收超期。 */
+export type OverdueStage = 'start' | 'finish' | 'accept';
+/** 预警提示级别。 */
+export type OverdueLevel = 'notice' | 'warning' | 'critical';
+/** 预警处理状态。 */
+export type OverdueWarningStatus = 'active' | 'resolved';
+
 /** 任务可执行的操作标识，由后端 allowedActions 下发。 */
 export type TaskAction = 'start' | 'complete' | 'accept' | 'cancel' | 'edit';
 
@@ -172,6 +179,7 @@ export interface AcceptanceBrief {
 export interface TaskListItem extends CleaningTask {
   segment: SegmentBrief | null;
   recordTotals: RecordTotals;
+  overdueWarning: OverdueBrief | null;
 }
 
 export interface TaskDetail {
@@ -311,6 +319,56 @@ export interface RectifyPayload {
   remark: string;
 }
 
+// ---------- 超期预警 ----------
+
+/** 任务上的超期预警摘要（任务列表、看板共用）。 */
+export interface OverdueBrief {
+  stage: OverdueStage;
+  level: OverdueLevel;
+  overdueDays: number;
+}
+
+export interface OverdueWarningItem {
+  id: number;
+  taskId: number;
+  taskCode: string;
+  taskTitle: string;
+  taskStatus: TaskStatus;
+  segmentCode: string;
+  segmentName: string;
+  district: string;
+  stage: OverdueStage;
+  level: OverdueLevel;
+  thresholdDays: number;
+  overdueDays: number;
+  status: OverdueWarningStatus;
+  resolveReason: string;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface OverdueSummary {
+  total: number;
+  byStage: Record<string, number>;
+  byLevel: Record<string, number>;
+}
+
+export interface OverdueRule {
+  id: number;
+  stage: OverdueStage;
+  thresholdDays: number;
+  level: OverdueLevel;
+  effectiveFrom: string;
+  createdAt: string;
+}
+
+export interface OverdueRulePayload {
+  stage: OverdueStage | '';
+  thresholdDays: number;
+  level: OverdueLevel | '';
+  effectiveFrom: string;
+}
+
 // ---------- 看板与元数据 ----------
 
 export interface Overview {
@@ -321,6 +379,7 @@ export interface Overview {
   taskTotal: number;
   taskByStatus: Record<string, number>;
   taskOverdue: number;
+  taskOverdueByStage: Record<string, number>;
   recordTotal: number;
   sludgeTotalM3: number;
   sludgeThisMonthM3: number;
@@ -384,4 +443,7 @@ export interface Enums {
   cleaningMethods: Option[];
   weathers: Option[];
   acceptanceResults: Option[];
+  overdueStages: Option[];
+  overdueLevels: Option[];
+  overdueWarningStatuses: Option[];
 }

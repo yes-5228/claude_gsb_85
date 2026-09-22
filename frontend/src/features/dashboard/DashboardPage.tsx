@@ -165,9 +165,18 @@ export function DashboardPage() {
           <StatCard
             label="待验收任务"
             value={formatNumber(data?.pendingAcceptanceCount ?? 0, 0)}
-            hint={`其中超期 ${data?.taskOverdue ?? 0} 项`}
+            hint="已完工报验，等待验收结论"
             tone={data && data.pendingAcceptanceCount > 0 ? 'warn' : 'default'}
             onClick={() => navigate('/tasks?status=completed')}
+          />
+          <StatCard
+            label="超期预警"
+            value={formatNumber(data?.taskOverdue ?? 0, 0)}
+            hint={`未开工 ${data?.taskOverdueByStage?.start ?? 0} · 未报验 ${data?.taskOverdueByStage?.finish ?? 0} · 验收超期 ${
+              data?.taskOverdueByStage?.accept ?? 0
+            }`}
+            tone={data && data.taskOverdue > 0 ? 'warn' : 'success'}
+            onClick={() => navigate('/warnings')}
           />
           <StatCard
             label="清淤记录"
@@ -251,7 +260,9 @@ export function DashboardPage() {
 
       <p className="form-note">
         说明：验收合格率 = 合格验收次数 / 验收总次数；未清淤管段指尚无「验收合格」记录的管段，
-        与管段台账中的最近清淤日期口径一致。字典标签取自后端 {optionLabel(enums?.acceptanceResults, 'pass')} 等统一枚举。
+        与管段台账中的最近清淤日期口径一致。超期预警按未按期开工、未按期报验、验收超期三个阶段统计，
+        与预警列表、任务列表同一口径，已取消与已验收的任务不参与统计。字典标签取自后端{' '}
+        {optionLabel(enums?.acceptanceResults, 'pass')} 等统一枚举。
       </p>
     </div>
   );

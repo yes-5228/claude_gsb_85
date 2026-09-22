@@ -21,6 +21,8 @@ const (
 	TableCleaningTasks     = "cleaning_tasks"
 	TableCleaningRecords   = "cleaning_records"
 	TableAcceptanceRecords = "acceptance_records"
+	TableOverdueRules      = "overdue_rules"
+	TableOverdueWarnings   = "overdue_warnings"
 )
 
 // TaskStats 某个管段下的清淤任务数量汇总。

@@ -16,6 +16,7 @@ import (
 	"github.com/drainage/desilting/internal/modules/acceptance"
 	"github.com/drainage/desilting/internal/modules/cleaningrecord"
 	"github.com/drainage/desilting/internal/modules/cleaningtask"
+	"github.com/drainage/desilting/internal/modules/overdue"
 	"github.com/drainage/desilting/internal/modules/pipesegment"
 )
 
@@ -76,5 +77,7 @@ func Migrate(db *gorm.DB) error {
 		&cleaningtask.CleaningTask{},
 		&cleaningrecord.CleaningRecord{},
 		&acceptance.AcceptanceRecord{},
+		&overdue.OverdueRule{},
+		&overdue.OverdueWarning{},
 	)
 }
