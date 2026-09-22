@@ -8,6 +8,7 @@ export interface TaskQuery {
   priority?: string;
   source?: string;
   pipeSegmentId?: number;
+  overdueStage?: string;
   planFrom?: string;
   planTo?: string;
   page?: number;

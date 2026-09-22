@@ -12,7 +12,9 @@ export type TagList =
   | 'cleaningMethods'
   | 'weathers'
   | 'acceptanceResults'
-  | 'pipeTypes';
+  | 'pipeTypes'
+  | 'overdueStages'
+  | 'overdueLevels';
 
 const TONES: Record<string, string> = {
   pending: 'muted',
@@ -27,7 +29,13 @@ const TONES: Record<string, string> = {
   high: 'warn',
   urgent: 'danger',
   pass: 'success',
-  rework: 'danger'
+  rework: 'danger',
+  not_started: 'info',
+  not_reported: 'warn',
+  not_accepted: 'danger',
+  notice: 'info',
+  warning: 'warn',
+  critical: 'danger'
 };
 
 interface StatusTagProps {

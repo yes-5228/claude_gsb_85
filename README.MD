@@ -9,9 +9,10 @@
 
 | 模块 | 页面 | 说明 |
 | --- | --- | --- |
-| 运行看板 | `/` | 跨模块汇总管段、任务、清淤量、验收合格率，含待验收任务与分片区统计 |
+| 运行看板 | `/` | 跨模块汇总管段、任务、清淤量、验收合格率，含待验收任务、分阶段超期预警与分片区统计 |
 | 管段台账 | `/segments`、`/segments/new`、`/segments/:id`、`/segments/:id/edit` | 管段档案维护、任务概况、清淤履历（计划 → 记录 → 验收） |
 | 清淤任务 | `/tasks`、`/tasks/new`、`/tasks/:id`、`/tasks/:id/edit` | 任务登记、开工 / 完工报验 / 取消、任务下清淤记录与验收结论 |
+| 超期预警 | `/warnings` | 分阶段超期预警（未开工 / 未报验 / 未验收）与阈值配置 |
 | 清淤记录 | `/records`、`/records/new`、`/records/:id`、`/records/:id/edit` | 按次录入现场数据（长度、清淤量、用水量、人数、设备、安全措施等） |
 | 验收记录 | `/acceptances`、`/acceptances/new`、`/acceptances/:id` | 登记验收结论、整改跟踪、复验 |
 | 枚举字典 | `/api/v1/meta/enums` | 后端统一下发全部枚举中文标签，前端不硬编码文案 |
@@ -38,6 +39,7 @@
 │   │   │   ├── cleaningtask/        # 清淤任务（含状态机）
 │   │   │   ├── cleaningrecord/      # 清淤记录
 │   │   │   ├── acceptance/          # 验收记录
+│   │   │   ├── overdue/             # 超期预警（分阶段判定 + 阈值配置）
 │   │   │   ├── dashboard/           # 运行看板（只读汇总）
 │   │   │   └── meta/                # 枚举字典
 │   │   ├── router/                  # 路由装配
@@ -49,7 +51,7 @@
 │   │   ├── api/                     # 接口封装（统一拆信封、抛 ApiError）
 │   │   ├── components/              # 通用组件（布局、表格、分页、弹窗、标签、Toast 等）
 │   │   ├── features/                # 按业务模块拆分的页面
-│   │   │   ├── dashboard/  segments/  tasks/  records/  acceptances/
+│   │   │   ├── dashboard/  segments/  tasks/  records/  acceptances/  warnings/
 │   │   ├── hooks/                   # useAsync / useForm
 │   │   ├── providers/               # 枚举字典 Provider
 │   │   ├── styles/                  # 全局样式
@@ -141,12 +143,16 @@ npm run dev            # http://localhost:5173
 | GET | `/api/v1/pipe-segments/:id` | 管段详情（含任务统计与最近任务） |
 | GET | `/api/v1/pipe-segments/:id/cleaning-history` | 管段清淤履历 |
 | POST/PUT/DELETE | `/api/v1/pipe-segments[/:id]` | 新增 / 修改 / 删除管段 |
-| GET | `/api/v1/cleaning-tasks` | 任务列表（`keyword` `status` `district` `priority` `source` `pipeSegmentId` `planFrom` `planTo`） |
+| GET | `/api/v1/cleaning-tasks` | 任务列表（`keyword` `status` `district` `priority` `source` `pipeSegmentId` `overdueStage` `planFrom` `planTo`） |
 | GET | `/api/v1/cleaning-tasks/:id` | 任务详情（含清淤汇总、验收结论、可执行动作） |
 | POST/PUT/DELETE | `/api/v1/cleaning-tasks[/:id]` | 登记 / 修改 / 删除任务 |
 | POST | `/api/v1/cleaning-tasks/:id/start` | 开工（待开工 → 清淤中） |
 | POST | `/api/v1/cleaning-tasks/:id/complete` | 完工报验（清淤中 → 待验收，需至少 1 条清淤记录） |
 | POST | `/api/v1/cleaning-tasks/:id/cancel` | 取消任务（需填写取消原因） |
+| GET | `/api/v1/overdue-warnings` | 超期预警列表（`stage` `page` `pageSize`） |
+| GET | `/api/v1/overdue-warnings/summary` | 分阶段预警汇总 |
+| GET | `/api/v1/overdue-rules` | 阈值配置总览（当前生效 + 历史版本） |
+| POST | `/api/v1/overdue-rules` | 新增阈值配置版本（生效日期不早于当天） |
 | GET | `/api/v1/cleaning-records` | 记录列表（`keyword` `taskId` `segmentId` `method` `weather` `dateFrom` `dateTo`） |
 | GET | `/api/v1/cleaning-records/:id` | 记录详情（含所属任务与管段） |
 | POST/PUT/DELETE | `/api/v1/cleaning-records[/:id]` | 录入 / 修改 / 删除清淤记录 |
@@ -179,6 +185,19 @@ pending ──开工──▶ in_progress ──完工报验──▶ completed 
   回写最近清淤日期与运行状态。
 - 删除保护：被任务引用的管段、已产生清淤记录或验收记录的任务、被验收记录引用的清淤记录、
   以及已合格的验收记录，都不允许删除。
+
+超期预警（`internal/modules/overdue`）：
+
+- 超期判断按任务所处阶段分三级，级别随阶段递增：
+  「未开工」（计划开始日期已过阈值仍未开工，提示）、
+  「未报验」（计划完成日期已过阈值仍未报验，警告）、
+  「未验收」（报验后超过阈值仍无验收结论，严重）。
+- 判定口径由 `StageCaseSQL` 单点生成，预警列表、任务列表标注与看板超期数量三处完全一致；
+  已取消、已验收的任务不参与统计。
+- 同一任务同一时刻只会落入一个阶段（按严重程度取最高），不会被重复提醒。
+- 阈值按阶段可配置并带生效日期（版本化存储）：判定取生效日期不晚于当天的最新版本，
+  新配置的生效日期不允许早于当天，因此调整只影响之后的判定；
+  未配置时使用默认阈值（未开工 3 天、未报验 0 天、未验收 7 天）。
 
 ## 校验与错误码
 

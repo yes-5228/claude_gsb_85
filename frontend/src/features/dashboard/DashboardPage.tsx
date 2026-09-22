@@ -165,9 +165,16 @@ export function DashboardPage() {
           <StatCard
             label="待验收任务"
             value={formatNumber(data?.pendingAcceptanceCount ?? 0, 0)}
-            hint={`其中超期 ${data?.taskOverdue ?? 0} 项`}
+            hint={`其中超期 ${data?.taskOverdueByStage?.not_accepted ?? 0} 项`}
             tone={data && data.pendingAcceptanceCount > 0 ? 'warn' : 'default'}
             onClick={() => navigate('/tasks?status=completed')}
+          />
+          <StatCard
+            label="超期预警"
+            value={formatNumber(data?.taskOverdue ?? 0, 0)}
+            hint={`未开工 ${data?.taskOverdueByStage?.not_started ?? 0} · 未报验 ${data?.taskOverdueByStage?.not_reported ?? 0} · 未验收 ${data?.taskOverdueByStage?.not_accepted ?? 0}`}
+            tone={data && data.taskOverdue > 0 ? 'danger' : 'success'}
+            onClick={() => navigate('/warnings')}
           />
           <StatCard
             label="清淤记录"

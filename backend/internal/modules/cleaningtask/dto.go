@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/drainage/desilting/internal/httpx"
+	"github.com/drainage/desilting/internal/modules/overdue"
 	"github.com/drainage/desilting/internal/modules/pipesegment"
 	"github.com/drainage/desilting/internal/shared/date"
 	"github.com/drainage/desilting/internal/shared/refx"
@@ -39,6 +40,7 @@ type ListQuery struct {
 	Priority      string
 	Source        string
 	PipeSegmentID uint
+	OverdueStage  string
 	PlanFrom      *date.Date
 	PlanTo        *date.Date
 	Page          httpx.PageQuery
@@ -46,6 +48,10 @@ type ListQuery struct {
 
 // ParseListQuery 解析任务列表查询条件。
 func ParseListQuery(c *fiber.Ctx) (ListQuery, error) {
+	overdueStage := httpx.TrimmedQuery(c, "overdueStage")
+	if overdueStage != "" && overdueStage != "any" && !overdue.HasStage(overdueStage) {
+		return ListQuery{}, httpx.BadRequest("超期阶段只能是：any / not_started / not_reported / not_accepted")
+	}
 	query := ListQuery{
 		Keyword:       httpx.TrimmedQuery(c, "keyword"),
 		Status:        httpx.TrimmedQuery(c, "status"),
@@ -53,6 +59,7 @@ func ParseListQuery(c *fiber.Ctx) (ListQuery, error) {
 		Priority:      httpx.TrimmedQuery(c, "priority"),
 		Source:        httpx.TrimmedQuery(c, "source"),
 		PipeSegmentID: uint(c.QueryInt("pipeSegmentId", 0)),
+		OverdueStage:  overdueStage,
 		Page:          httpx.ParsePage(c),
 	}
 	from, err := parseDateParam(c, "planFrom", "计划开始日期起")
@@ -80,11 +87,13 @@ func parseDateParam(c *fiber.Ctx, key, label string) (*date.Date, error) {
 	return &parsed, nil
 }
 
-// ListItem 任务列表项：任务本体 + 管段信息 + 清淤汇总。
+// ListItem 任务列表项：任务本体 + 管段信息 + 清淤汇总 + 超期预警标注。
 type ListItem struct {
 	CleaningTask
 	Segment      *pipesegment.Brief `json:"segment"`
 	RecordTotals refx.RecordTotals  `json:"recordTotals"`
+	OverdueStage string             `json:"overdueStage"`
+	OverdueDays  int                `json:"overdueDays"`
 }
 
 // DetailResponse 任务详情：任务 + 管段 + 清淤汇总 + 验收结论 + 可执行操作。

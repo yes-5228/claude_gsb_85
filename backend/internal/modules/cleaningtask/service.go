@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/drainage/desilting/internal/httpx"
+	"github.com/drainage/desilting/internal/modules/overdue"
 	"github.com/drainage/desilting/internal/modules/pipesegment"
 	"github.com/drainage/desilting/internal/shared/date"
 	"github.com/drainage/desilting/internal/shared/option"
@@ -28,11 +29,12 @@ type SegmentGateway interface {
 type Service struct {
 	repo     *Repository
 	segments SegmentGateway
+	overdue  *overdue.Service
 }
 
 // NewService 构造服务。
-func NewService(repo *Repository, segments SegmentGateway) *Service {
-	return &Service{repo: repo, segments: segments}
+func NewService(repo *Repository, segments SegmentGateway, overdueSvc *overdue.Service) *Service {
+	return &Service{repo: repo, segments: segments, overdue: overdueSvc}
 }
 
 // Create 登记清淤任务，任务编号按 日期 + 流水号 自动生成。
@@ -118,9 +120,13 @@ func (s *Service) FindByID(ctx context.Context, id uint) (*CleaningTask, error) 
 	return task, nil
 }
 
-// List 分页查询任务，并批量补齐管段信息与清淤汇总。
+// List 分页查询任务，并批量补齐管段信息、清淤汇总与超期预警标注。
 func (s *Service) List(ctx context.Context, query ListQuery) ([]ListItem, int64, error) {
-	tasks, total, err := s.repo.List(ctx, query)
+	thresholds, err := s.overdue.CurrentThresholds(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	tasks, total, err := s.repo.List(ctx, query, thresholds)
 	if err != nil {
 		return nil, 0, httpx.WrapInternal("查询清淤任务失败", err)
 	}
@@ -144,10 +150,20 @@ func (s *Service) List(ctx context.Context, query ListQuery) ([]ListItem, int64,
 		return nil, 0, httpx.WrapInternal("统计清淤量失败", err)
 	}
 
+	today := date.Today()
 	items := make([]ListItem, 0, len(tasks))
 	for i := range tasks {
 		task := tasks[i]
-		item := ListItem{CleaningTask: task, RecordTotals: totals[task.ID]}
+		item := ListItem{
+			CleaningTask: task.CleaningTask,
+			RecordTotals: totals[task.ID],
+			OverdueStage: task.OverdueStage,
+			OverdueDays: overdue.OverdueDays(task.OverdueStage, overdue.Snapshot{
+				PlanStartDate: task.PlanStartDate,
+				PlanEndDate:   task.PlanEndDate,
+				FinishedAt:    task.FinishedAt,
+			}, today),
+		}
 		if brief, ok := briefs[task.PipeSegmentID]; ok {
 			item.Segment = &brief
 		}

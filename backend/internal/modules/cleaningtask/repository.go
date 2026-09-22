@@ -8,6 +8,8 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/drainage/desilting/internal/modules/overdue"
+	"github.com/drainage/desilting/internal/shared/date"
 	"github.com/drainage/desilting/internal/shared/refx"
 )
 
@@ -110,16 +112,25 @@ func (r *Repository) TransitionTx(ctx context.Context, tx *gorm.DB, id uint, fro
 	return nil
 }
 
-// List 分页查询任务。
-func (r *Repository) List(ctx context.Context, query ListQuery) ([]CleaningTask, int64, error) {
+// TaskWithStage 带超期预警阶段标注的任务查询结果。
+type TaskWithStage struct {
+	CleaningTask
+	OverdueStage string `gorm:"->"`
+}
+
+// List 分页查询任务，并用与预警模块一致的口径标注每条任务落入的预警阶段。
+func (r *Repository) List(ctx context.Context, query ListQuery, thresholds overdue.Thresholds) ([]TaskWithStage, int64, error) {
 	query.Page.Normalize()
+	stageExpr, stageArgs := overdue.StageCaseSQL("", thresholds, date.Today())
+
 	var total int64
-	if err := r.filtered(ctx, query).Count(&total).Error; err != nil {
+	if err := r.filtered(ctx, query, stageExpr, stageArgs).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	tasks := make([]CleaningTask, 0)
-	err := r.filtered(ctx, query).
+	tasks := make([]TaskWithStage, 0)
+	err := r.filtered(ctx, query, stageExpr, stageArgs).
+		Select("cleaning_tasks.*, "+stageExpr+" AS overdue_stage", stageArgs...).
 		Order("plan_start_date DESC, id DESC").
 		Offset(query.Page.Offset()).
 		Limit(query.Page.PageSize).
@@ -130,7 +141,7 @@ func (r *Repository) List(ctx context.Context, query ListQuery) ([]CleaningTask,
 	return tasks, total, nil
 }
 
-func (r *Repository) filtered(ctx context.Context, query ListQuery) *gorm.DB {
+func (r *Repository) filtered(ctx context.Context, query ListQuery, stageExpr string, stageArgs []any) *gorm.DB {
 	tx := r.db.WithContext(ctx).Model(&CleaningTask{})
 	if keyword := strings.ToLower(strings.TrimSpace(query.Keyword)); keyword != "" {
 		like := "%" + keyword + "%"
@@ -162,6 +173,14 @@ func (r *Repository) filtered(ctx context.Context, query ListQuery) *gorm.DB {
 	}
 	if query.PlanTo != nil {
 		tx = tx.Where("plan_start_date <= ?", query.PlanTo.Time)
+	}
+	switch query.OverdueStage {
+	case "":
+		// 不按超期过滤
+	case "any":
+		tx = tx.Where(stageExpr+" <> ''", stageArgs...)
+	default:
+		tx = tx.Where(stageExpr+" = ?", append(stageArgs, query.OverdueStage)...)
 	}
 	return tx
 }

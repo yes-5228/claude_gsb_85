@@ -8,6 +8,7 @@ import (
 	"github.com/drainage/desilting/internal/modules/acceptance"
 	"github.com/drainage/desilting/internal/modules/cleaningrecord"
 	"github.com/drainage/desilting/internal/modules/cleaningtask"
+	"github.com/drainage/desilting/internal/modules/overdue"
 	"github.com/drainage/desilting/internal/modules/pipesegment"
 	"github.com/drainage/desilting/internal/shared/option"
 )
@@ -23,6 +24,8 @@ type Enums struct {
 	CleaningMethods   []option.Option `json:"cleaningMethods"`
 	Weathers          []option.Option `json:"weathers"`
 	AcceptanceResults []option.Option `json:"acceptanceResults"`
+	OverdueStages     []option.Option `json:"overdueStages"`
+	OverdueLevels     []option.Option `json:"overdueLevels"`
 }
 
 // Register 注册元数据路由。
@@ -39,6 +42,8 @@ func Register(router fiber.Router) {
 			CleaningMethods:   cleaningtask.MethodOptions(),
 			Weathers:          cleaningrecord.WeatherOptions(),
 			AcceptanceResults: acceptance.ResultOptions(),
+			OverdueStages:     overdue.StageOptions(),
+			OverdueLevels:     overdue.LevelOptions(),
 		})
 	})
 }

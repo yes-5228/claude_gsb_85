@@ -9,6 +9,7 @@ import (
 
 	"github.com/drainage/desilting/internal/httpx"
 	"github.com/drainage/desilting/internal/modules/cleaningtask"
+	"github.com/drainage/desilting/internal/modules/overdue"
 	"github.com/drainage/desilting/internal/shared/date"
 	"github.com/drainage/desilting/internal/shared/num"
 	"github.com/drainage/desilting/internal/shared/refx"
@@ -16,12 +17,13 @@ import (
 
 // Service 看板统计。
 type Service struct {
-	db *gorm.DB
+	db      *gorm.DB
+	overdue *overdue.Service
 }
 
 // NewService 构造服务。
-func NewService(db *gorm.DB) *Service {
-	return &Service{db: db}
+func NewService(db *gorm.DB, overdueSvc *overdue.Service) *Service {
+	return &Service{db: db, overdue: overdueSvc}
 }
 
 // Overview 总览指标。
@@ -31,9 +33,10 @@ type Overview struct {
 	SegmentByStatus       map[string]int64 `json:"segmentByStatus"`
 	UncleanedSegmentCount int64            `json:"uncleanedSegmentCount"`
 
-	TaskTotal    int64            `json:"taskTotal"`
-	TaskByStatus map[string]int64 `json:"taskByStatus"`
-	TaskOverdue  int64            `json:"taskOverdue"`
+	TaskTotal          int64            `json:"taskTotal"`
+	TaskByStatus       map[string]int64 `json:"taskByStatus"`
+	TaskOverdue        int64            `json:"taskOverdue"`
+	TaskOverdueByStage map[string]int64 `json:"taskOverdueByStage"`
 
 	RecordTotal       int64   `json:"recordTotal"`
 	SludgeTotalM3     float64 `json:"sludgeTotalM3"`
@@ -92,17 +95,13 @@ func (s *Service) Overview(ctx context.Context) (*Overview, error) {
 	}
 	result.TaskByStatus = taskStatus
 
-	// 超期任务：计划完成日期已过，但仍未进入验收环节
-	var overdue int64
-	today := date.Today()
-	err = s.db.WithContext(ctx).Table(refx.TableCleaningTasks).
-		Where("plan_end_date < ?", today.Time).
-		Where("status IN ?", []string{cleaningtask.StatusPending, cleaningtask.StatusInProgress}).
-		Count(&overdue).Error
+	// 超期预警：分阶段口径（未开工 / 未报验 / 未验收），与预警列表、任务列表一致
+	overdueTotal, overdueByStage, err := s.overdue.CountByStage(ctx)
 	if err != nil {
-		return nil, httpx.WrapInternal("统计超期任务失败", err)
+		return nil, err
 	}
-	result.TaskOverdue = overdue
+	result.TaskOverdue = overdueTotal
+	result.TaskOverdueByStage = overdueByStage
 
 	// ---------- 清淤记录 ----------
 	type recordAgg struct {
@@ -123,7 +122,7 @@ func (s *Service) Overview(ctx context.Context) (*Overview, error) {
 	result.SludgeTotalM3 = num.Round2(recordStats.Sludge)
 	result.CleanedLengthM = num.Round2(recordStats.LengthM)
 
-	monthStart := date.New(time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC))
+	monthStart := date.New(time.Date(date.Today().Year(), date.Today().Month(), 1, 0, 0, 0, 0, time.UTC))
 	var monthSludge float64
 	err = s.db.WithContext(ctx).Table(refx.TableCleaningRecords).
 		Select("COALESCE(SUM(sludge_volume_m3), 0)").
@@ -267,6 +266,8 @@ type PendingAcceptanceItem struct {
 }
 
 // PendingAcceptance 待验收任务清单，按完工时间升序（先完工先验收）。
+//
+// OverdueDays 采用预警模块「未验收」阶段口径：报验后等待验收的天数超过阈值才计为超期。
 func (s *Service) PendingAcceptance(ctx context.Context, limit int) ([]PendingAcceptanceItem, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 10
@@ -292,14 +293,16 @@ func (s *Service) PendingAcceptance(ctx context.Context, limit int) ([]PendingAc
 		return nil, httpx.WrapInternal("查询待验收任务失败", err)
 	}
 
+	thresholds, err := s.overdue.CurrentThresholds(ctx)
+	if err != nil {
+		return nil, err
+	}
 	today := date.Today()
 	for i := range items {
 		items[i].SludgeVolumeM3 = num.Round2(items[i].SludgeVolumeM3)
-		if items[i].PlanEndDate.IsZero() {
-			continue
-		}
-		if today.After(items[i].PlanEndDate) {
-			items[i].OverdueDays = int(today.Time.Sub(items[i].PlanEndDate.Time).Hours() / 24)
+		waitDays := overdue.OverdueDays(overdue.StageNotAccepted, overdue.Snapshot{FinishedAt: items[i].FinishedAt}, today)
+		if waitDays > thresholds.NotAcceptedDays {
+			items[i].OverdueDays = waitDays
 		}
 	}
 	return items, nil

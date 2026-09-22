@@ -6,6 +6,7 @@ import (
 
 	"github.com/drainage/desilting/internal/httpx"
 	"github.com/drainage/desilting/internal/modules/cleaningtask"
+	"github.com/drainage/desilting/internal/modules/overdue"
 	"github.com/drainage/desilting/internal/shared/date"
 	"github.com/drainage/desilting/internal/testsupport"
 )
@@ -144,6 +145,70 @@ func TestAllowedActionsFollowStatus(t *testing.T) {
 				t.Fatalf("状态 %s 期望可执行操作 %v，实际 %v", status, want, got)
 			}
 		}
+	}
+}
+
+func TestListMarksOverdueStage(t *testing.T) {
+	fixture := testsupport.NewFixture(t)
+	overdueTask, err := fixture.Tasks.Create(context.Background(), cleaningtask.SaveRequest{
+		Title:         "超期未开工的任务",
+		PipeSegmentID: fixture.Segment.ID,
+		PlanStartDate: date.Today().AddDays(-5),
+		PlanEndDate:   date.Today().AddDays(2),
+	})
+	testsupport.RequireNoError(t, err)
+	normalTask := fixture.CreateTask(t, fixture.Segment.ID, "正常任务")
+
+	items, _, err := fixture.Tasks.List(context.Background(), cleaningtask.ListQuery{
+		Page: httpx.PageQuery{Page: 1, PageSize: 50},
+	})
+	testsupport.RequireNoError(t, err)
+
+	byID := make(map[uint]cleaningtask.ListItem, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	if got := byID[overdueTask.ID].OverdueStage; got != overdue.StageNotStarted {
+		t.Fatalf("超期任务应标注未开工阶段，实际 %q", got)
+	}
+	if got := byID[overdueTask.ID].OverdueDays; got != 5 {
+		t.Fatalf("超期天数应为 5，实际 %d", got)
+	}
+	if got := byID[normalTask.ID].OverdueStage; got != "" {
+		t.Fatalf("正常任务不应标注超期，实际 %q", got)
+	}
+	if got := byID[normalTask.ID].OverdueDays; got != 0 {
+		t.Fatalf("正常任务超期天数应为 0，实际 %d", got)
+	}
+}
+
+func TestListFiltersByOverdueStage(t *testing.T) {
+	fixture := testsupport.NewFixture(t)
+	_, err := fixture.Tasks.Create(context.Background(), cleaningtask.SaveRequest{
+		Title:         "超期未开工的任务",
+		PipeSegmentID: fixture.Segment.ID,
+		PlanStartDate: date.Today().AddDays(-5),
+		PlanEndDate:   date.Today().AddDays(2),
+	})
+	testsupport.RequireNoError(t, err)
+	fixture.CreateTask(t, fixture.Segment.ID, "正常任务")
+
+	_, total, err := fixture.Tasks.List(context.Background(), cleaningtask.ListQuery{
+		OverdueStage: "any",
+		Page:         httpx.PageQuery{Page: 1, PageSize: 50},
+	})
+	testsupport.RequireNoError(t, err)
+	if total != 1 {
+		t.Fatalf("仅看超期应只返回 1 条，实际 %d", total)
+	}
+
+	_, total, err = fixture.Tasks.List(context.Background(), cleaningtask.ListQuery{
+		OverdueStage: overdue.StageNotReported,
+		Page:         httpx.PageQuery{Page: 1, PageSize: 50},
+	})
+	testsupport.RequireNoError(t, err)
+	if total != 0 {
+		t.Fatalf("未报验阶段应没有任务，实际 %d", total)
 	}
 }
 

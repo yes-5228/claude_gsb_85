@@ -18,6 +18,7 @@ import (
 	"github.com/drainage/desilting/internal/modules/acceptance"
 	"github.com/drainage/desilting/internal/modules/cleaningrecord"
 	"github.com/drainage/desilting/internal/modules/cleaningtask"
+	"github.com/drainage/desilting/internal/modules/overdue"
 	"github.com/drainage/desilting/internal/modules/pipesegment"
 	"github.com/drainage/desilting/internal/shared/date"
 )
@@ -60,15 +61,17 @@ type Services struct {
 	Tasks       *cleaningtask.Service
 	Records     *cleaningrecord.Service
 	Acceptances *acceptance.Service
+	Overdue     *overdue.Service
 }
 
 // NewServices 按生产环境的依赖顺序装配服务。
 func NewServices(db *gorm.DB) *Services {
 	segments := pipesegment.NewService(pipesegment.NewRepository(db))
-	tasks := cleaningtask.NewService(cleaningtask.NewRepository(db), segments)
+	overdueSvc := overdue.NewService(overdue.NewRepository(db))
+	tasks := cleaningtask.NewService(cleaningtask.NewRepository(db), segments, overdueSvc)
 	records := cleaningrecord.NewService(cleaningrecord.NewRepository(db), tasks)
 	acceptances := acceptance.NewService(acceptance.NewRepository(db), tasks, segments, records)
-	return &Services{Segments: segments, Tasks: tasks, Records: records, Acceptances: acceptances}
+	return &Services{Segments: segments, Tasks: tasks, Records: records, Acceptances: acceptances, Overdue: overdueSvc}
 }
 
 // Fixture 内存库 + 服务 + 默认管段的组合，方便测试用例直接使用。

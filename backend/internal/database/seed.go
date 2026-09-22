@@ -161,6 +161,14 @@ func Seed(db *gorm.DB, logger *slog.Logger) error {
 				Status: cleaningtask.StatusPending, Description: "按年度计划安排，待城东片区任务完成后进场",
 			},
 			{
+				Code:  "QX" + today.AddDays(-5).Format("20060102") + "-0002",
+				Title: "人民广场合流支管清淤", PipeSegmentID: segmentID["PS-H-2020-009"],
+				Priority: cleaningtask.PriorityNormal, Source: cleaningtask.SourcePlan, Method: cleaningtask.MethodManual,
+				PlanStartDate: today.AddDays(-5), PlanEndDate: today.AddDays(2),
+				TeamName: "城南养护三班", LeaderName: "陈刚", LeaderPhone: "0571-88345678",
+				Status: cleaningtask.StatusPending, Description: "计划开始日期已过，班组尚未进场",
+			},
+			{
 				Code:  "QX" + today.AddDays(-10).Format("20060102") + "-0001",
 				Title: "长江南路污水管清淤", PipeSegmentID: segmentID["PS-W-2019-021"],
 				Priority: cleaningtask.PriorityLow, Source: cleaningtask.SourcePlan, Method: cleaningtask.MethodHighPressure,

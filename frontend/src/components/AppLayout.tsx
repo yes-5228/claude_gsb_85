@@ -20,7 +20,8 @@ const NAV_GROUPS: NavGroup[] = [
     title: '清淤作业',
     items: [
       { to: '/tasks', label: '清淤任务' },
-      { to: '/records', label: '清淤记录' }
+      { to: '/records', label: '清淤记录' },
+      { to: '/warnings', label: '超期预警' }
     ]
   },
   { title: '质量管理', items: [{ to: '/acceptances', label: '验收记录' }] }

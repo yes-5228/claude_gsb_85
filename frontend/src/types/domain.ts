@@ -9,6 +9,11 @@ export type CleaningMethod = 'high_pressure' | 'winch' | 'grab' | 'manual' | 'ro
 export type Weather = 'sunny' | 'cloudy' | 'overcast' | 'light_rain' | 'heavy_rain';
 export type AcceptanceResult = 'pass' | 'rework';
 
+/** 超期预警阶段：未开工 / 未报验 / 未验收。 */
+export type OverdueStage = 'not_started' | 'not_reported' | 'not_accepted';
+/** 超期预警级别：提示 / 警告 / 严重，随阶段固定。 */
+export type OverdueLevel = 'notice' | 'warning' | 'critical';
+
 /** 任务可执行的操作标识，由后端 allowedActions 下发。 */
 export type TaskAction = 'start' | 'complete' | 'accept' | 'cancel' | 'edit';
 
@@ -172,6 +177,9 @@ export interface AcceptanceBrief {
 export interface TaskListItem extends CleaningTask {
   segment: SegmentBrief | null;
   recordTotals: RecordTotals;
+  /** 当前落入的预警阶段，空串表示未超期。 */
+  overdueStage: OverdueStage | '';
+  overdueDays: number;
 }
 
 export interface TaskDetail {
@@ -311,6 +319,58 @@ export interface RectifyPayload {
   remark: string;
 }
 
+// ---------- 超期预警 ----------
+
+export interface OverdueWarningItem {
+  taskId: number;
+  code: string;
+  title: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  teamName: string;
+  segmentCode: string;
+  segmentName: string;
+  district: string;
+  stage: OverdueStage;
+  level: OverdueLevel;
+  overdueDays: number;
+  planStartDate: string | null;
+  planEndDate: string | null;
+  finishedAt: string | null;
+}
+
+export interface OverdueSummary {
+  total: number;
+  byStage: Record<string, number>;
+}
+
+/** 某阶段当前生效的阈值（effectiveFrom 为空表示系统默认值）。 */
+export interface OverdueRuleCurrent {
+  stage: OverdueStage;
+  level: OverdueLevel;
+  thresholdDays: number;
+  effectiveFrom: string | null;
+}
+
+export interface OverdueRuleVersion {
+  id: number;
+  stage: OverdueStage;
+  thresholdDays: number;
+  effectiveFrom: string | null;
+  createdAt: string;
+}
+
+export interface OverdueRulesOverview {
+  current: OverdueRuleCurrent[];
+  versions: OverdueRuleVersion[];
+}
+
+export interface OverdueRulePayload {
+  stage: OverdueStage;
+  thresholdDays: number;
+  effectiveFrom: string;
+}
+
 // ---------- 看板与元数据 ----------
 
 export interface Overview {
@@ -320,7 +380,9 @@ export interface Overview {
   uncleanedSegmentCount: number;
   taskTotal: number;
   taskByStatus: Record<string, number>;
+  /** 超期预警总数（未开工 / 未报验 / 未验收三阶段并集，与预警列表口径一致）。 */
   taskOverdue: number;
+  taskOverdueByStage: Record<string, number>;
   recordTotal: number;
   sludgeTotalM3: number;
   sludgeThisMonthM3: number;
@@ -384,4 +446,6 @@ export interface Enums {
   cleaningMethods: Option[];
   weathers: Option[];
   acceptanceResults: Option[];
+  overdueStages: Option[];
+  overdueLevels: Option[];
 }

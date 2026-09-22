@@ -3,11 +3,13 @@ package cleaningtask
 import (
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
+
+	"github.com/drainage/desilting/internal/modules/overdue"
 )
 
 // Register 注册清淤任务路由，并返回 service 供其他模块装配依赖。
-func Register(router fiber.Router, db *gorm.DB, segments SegmentGateway) *Service {
-	svc := NewService(NewRepository(db), segments)
+func Register(router fiber.Router, db *gorm.DB, segments SegmentGateway, overdueSvc *overdue.Service) *Service {
+	svc := NewService(NewRepository(db), segments, overdueSvc)
 	handler := NewHandler(svc)
 
 	group := router.Group("/cleaning-tasks")
